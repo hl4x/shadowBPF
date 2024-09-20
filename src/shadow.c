@@ -1,10 +1,10 @@
 #include <stdio.h>
-#include <stderr.h>
 #include <signal.h>
+#include <unistd.h>
 #include <bpf/libbpf.h>
 #include "shadow.skel.h"
 
-static int libbpf_print_fn(enum libbpf_print_level level, const char *format, va_list *args)
+static int libbpf_print_fn(enum libbpf_print_level level, const char *format, va_list args)
 {
     return vfprintf(stderr, format, args);
 }
@@ -26,10 +26,10 @@ int main(int argc, char **argv)
 
     /* cleaner handling of ctrl+c */
     signal(SIGINT, sig_handler);
-    signal(SIGTERM, sig_handler);1
+    signal(SIGTERM, sig_handler);
 
     /* load and verify BPF programs */
-    skel = kprobe_bpf__open_and_load();
+    skel = shadow_bpf__open_and_load();
     if (!skel) {
         fprintf(stderr, "Failed to open BPF skeleton\n");
         goto cleanup;
@@ -38,7 +38,7 @@ int main(int argc, char **argv)
     /* attach kprobes */
     err = shadow_bpf__attach(skel);
     if (err) {
-        fprint(stderr, "Failed to attach BPF skeleton\n")
+        fprintf(stderr, "Failed to attach BPF skeleton\n");
         goto cleanup;
     }
 

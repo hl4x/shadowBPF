@@ -12,36 +12,10 @@
 #define SOCK_PATH_OFFSET    \
     (offsetof(struct unix_address, name) + offsetof(struct sockaddr_un, sun_path))
 
-#if defined(__TARGET_ARCH_x86)
-#define SYSCALL_WRAPPER 1
-#define SYS_PREFIX "__x64_"
-#elif defined(__TARGET_ARCH_s390)
-#define SYSCALL_WRAPPER 1
-#define SYS_PREFIX "__s390x_"
-#elif defined(__TARGET_ARCH_arm64)
-#define SYSCALL_WRAPPER 1
-#define SYS_PREFIX "__arm64_"
-#elif defined(__TARGET_ARCH_riscv)
-#define SYSCALL_WRAPPER 1
-#define SYS_PREFIX "__riscv_"
-#else
-#define SYSCALL_WRAPPER 0
-#define SYS_PREFIX "__se_"
-#endif
-
 struct iov_data {
     size_t len;
     void *base;
-};
-
-struct data_start_end {
-    void *start;
-    void *end;
-};
-
-struct event {
-    size_t len;
-    void *base;
+    void *body_start;
 };
 
 #endif // _SHADOW_H

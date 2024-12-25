@@ -12,9 +12,6 @@
 #include <sys/resource.h>
 #include <sys/mman.h>
 
-#define PAGE_SIZE 4096
-#define MAP_ADDR 0xb0000
-
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format, va_list args)
 {
     return vfprintf(stderr, format, args);
@@ -31,11 +28,11 @@ static bool setup_sig_handler()
 {
     /* cleaner handling of Ctrl+C */
     if ((signal(SIGINT, sig_handler)) == SIG_ERR) {
-        fprintf(stderr, "can't set signal handler: %s\n", strerror(errno));
+        fprintf(stderr, "Can't set signal handler: %s\n", strerror(errno));
         return false;
     }
     if ((signal(SIGTERM, sig_handler)) == SIG_ERR) {
-        fprintf(stderr, "can't set signal handler: %s\n", strerror(errno));
+        fprintf(stderr, "Can't set signal handler: %s\n", strerror(errno));
         return false;
     }
     return true;
@@ -57,45 +54,18 @@ static bool bump_memlock_rlimit()
 
 static bool setup() 
 {
-    /* Set up libbpf errors and debug info callback */
+    /* set up libbpf errors and debug info callback */
     libbpf_set_print(libbpf_print_fn);
 
-    /* Increase RLIMIT_MEMLOCK to allow bpf sub-system to do anything */
+    /* increase RLIMIT_MEMLOCK to allow bpf sub-system to do anything */
     if (!bump_memlock_rlimit())
         return false;
 
-    /* Setup signal handler so we exit cleanly */
+    /* setup signal handler so we exit cleanly */
     if (!setup_sig_handler())
         return false;
 
     return true;
-}
-
-static int retard_time(void *base, size_t len)
-{
-    int mem_fd = open("/dev/mem", O_RDWR | O_SYNC);
-    if (mem_fd == -1)
-        return 0;
-    char *retard = mmap(base, len, PROT_READ | PROT_WRITE, MAP_SHARED, mem_fd, 0);
-    if (!retard) {
-        perror("mmap");
-        return 0;
-    }
-    fprintf(stderr, "Retard located: %p\n", retard);
-    
-    return 0;
-}
-
-static int handle_event(void *ctx, void *data, size_t data_sz)
-{
-    struct event *e = data;
-    if (e && e->base && e->len) {
-        fprintf(stderr, "Found data: %p\n", e->base);
-        retard_time(e->base, e->len);
-    } else {
-        fprintf(stderr, "Invalid event!\n");
-    }
-    return 0;
 }
 
 int main(int argc, char **argv)
@@ -104,25 +74,25 @@ int main(int argc, char **argv)
     struct ring_buffer *rb = NULL;
     int err;
 
-    /* Do common setup */
+    /* do common setup */
     if (!setup())
         exit(EXIT_FAILURE);
 
-    /* Open BPF applications */
+    /* open BPF applications */
     skel = shadow_bpf__open();
     if (!skel) {
         fprintf(stderr, "Failed to open BPF skeleton: %s\n", strerror(errno));
         goto cleanup;
     }
 
-    /* Load and verify BPF program */
+    /* load and verify BPF program */
     err = shadow_bpf__load(skel);
     if (err) {
         fprintf(stderr, "Failed to load and verify BPF skeleton\n");
         goto cleanup;
     }
 
-    /* Add program to map to call it later */
+    /* add programs to map to be called later */
     int index = PROG_01;
     int prog_fd = bpf_program__fd(skel->progs.http_find_msg_body_start);
     int ret = bpf_map_update_elem(
@@ -136,7 +106,7 @@ int main(int argc, char **argv)
         goto cleanup;
     }
 
-    /* Attach kprobes */
+    /* attach kprobes */
     err = shadow_bpf__attach(skel);
     if (err) {
         fprintf(stderr, "Failed to attach BPF skeleton\n");
@@ -145,25 +115,8 @@ int main(int argc, char **argv)
 
     printf("Successfully started!\n"); 
 
-    rb = ring_buffer__new(bpf_map__fd(skel->maps.rb), handle_event, NULL, NULL);
-    if (!rb) {
-        err = -1;
-        fprintf(stderr, "Failed to create ring buffer!\n");
-        goto cleanup;
-    }
-
-    while (!exiting) {
-        err = ring_buffer__poll(rb, 100 /* timeout, ms */);
-        /* Ctrl-C will cause -EINTR */
-        if (err == -EINTR) {
-            err = 0;
-            break;
-        }
-        if (err < 0) {
-            fprintf(stderr, "Error polling perf buffer: %d\n", err);
-            break;
-        }
-    }
+    while (!exiting)
+        sleep(1);
 
 cleanup:
     shadow_bpf__destroy(skel);

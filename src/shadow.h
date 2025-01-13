@@ -18,4 +18,8 @@ struct iov_data {
     void *body_start;
 };
 
+struct event {
+    bool success;
+};
+
 #endif // _SHADOW_H

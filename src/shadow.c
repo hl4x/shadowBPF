@@ -11,8 +11,6 @@
 #include <bpf/libbpf.h>
 #include <sys/resource.h>
 #include <sys/mman.h>
-#include <sys/klog.h>
-#include <syslog.h>
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format, va_list args)
 {

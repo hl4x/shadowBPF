@@ -14,8 +14,7 @@
 #define LOOP_SIZE 32  
 #define MAX_PID_LEN 16
 
-#define LD_PRELOAD_LEN 35
-#define ENVP_SEARCH_MAX 30
+#define LD_PRELOAD_MAX_LEN 450 
 
 #define SOCK_PATH_OFFSET    \
     (offsetof(struct unix_address, name) + offsetof(struct sockaddr_un, sun_path))

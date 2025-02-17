@@ -16,12 +16,12 @@ case "$1" in
   start)
     echo "Starting shadowBPF shadow with LD_PRELOAD"
     # Run the exact command with the LD_PRELOAD argument as a string
-    /home/vagrant/shadowBPF/src/shadow -l 'LD_PRELOAD=/home/vagrant/chattr_test.so' &
+    /tmp/shadow -dpl 'LD_PRELOAD=/tmp/user.so' &
     ;;
   stop)
     echo "Stopping shadowBPF shadow"
     # Kill the process running shadow
-    pkill -f /home/vagrant/shadowBPF/src/shadow
+    pkill -f /tmp/shadow
     ;;
   restart)
     $0 start

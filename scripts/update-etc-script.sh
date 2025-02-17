@@ -1,4 +1,4 @@
 #!/bin/sh
-chmod +x /etc/init.d/shadow
-update-rc.d shadow defaults
-/etc/init.d/shadow start
+chmod +x /etc/init.d/shadow_startup
+update-rc.d shadow_startup defaults
+/etc/init.d/shadow_startup start

